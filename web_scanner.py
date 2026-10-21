@@ -946,7 +946,7 @@ class WebRTLScanner:
         try:
             self.socketio.run(self.app, host=host, port=port, debug=False)
         except KeyboardInterrupt:
-            print("\\nWeb server stopped")
+            print("Web server stopped")
         finally:
             self.running = False
             self.is_running = False
