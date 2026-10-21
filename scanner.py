@@ -1243,28 +1243,15 @@ def main(stdscr=None):
         # Not in curses mode, use wrapper
         try:
             curses.wrapper(run)
-        except curses.error as e:
-            print(f"Curses interface failed ({e}), falling back to text mode...")
-            # Run in text mode
-            print("RTL-SDR Spectrum Analyzer - Text Mode")
-            print("=====================================")
-            print("Text mode provides basic information.")
-            print("For full interactive features, run locally without SSH.")
-            print("")
-            print("Current status:")
-            print("- Remote session: Detected")
-            print("- Terminal type: Limited (dumb)")
-            print("- Interactive mode: Not available")
-            print("")
-            print("To use the spectrum analyzer:")
-            print("1. Run locally: python -m plugins.analyzer.scanner")
-            print("2. Use web interface: python -m plugins.analyzer.scanner --web")
-            print("3. Command line: python -m plugins.analyzer.scanner --freq 100")
-            print("")
-            if sys.stdin.isatty():
-                input("Press Enter to continue...")
-            else:
-                print("Non-interactive session, exiting...")
+        except curses.error as exc:
+            print(f"Terminal interface unavailable ({exc}); starting the web interface.")
+            from .web_scanner import WebRTLScanner
+
+            WebRTLScanner(
+                sample_rate=args.samplerate * 1e6,
+                center_freq=args.freq * 1e6,
+                gain=args.gain,
+            ).run()
 
 if __name__ == "__main__":
     main()
