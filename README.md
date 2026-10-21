@@ -23,3 +23,7 @@ The analyzer imports SpectrumSnek's core `sdr_manager.py` at runtime to coordina
 - Web interface automatically selected for SSH or `TERM=dumb` sessions
 
 An RTL-SDR compatible receiver is required for live operation. Hardware-backed testing must be performed on the target device.
+
+## Network access
+
+The web interface listens on all network interfaces so it can be opened from another device. It has no built-in authentication; run it only on a trusted network and restrict access to TCP port 5000 with your firewall.
