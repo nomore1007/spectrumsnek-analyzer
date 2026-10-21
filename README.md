@@ -16,14 +16,15 @@ The analyzer imports SpectrumSnek's core `sdr_manager.py` at runtime to coordina
 
 ## Features
 
-- Live spectrum display and tuning
+- Live spectrum measurements from an RTL-SDR
+- Peak frequency and signal-level output in limited/SSH terminals
+- Interactive spectrum display and tuning on a capable local terminal
 - AM/FM/SSB/CW demodulation support
 - CTCSS tone detection
-- Interactive terminal interface on a capable local terminal
-- Web interface automatically selected for SSH or `TERM=dumb` sessions
+- Shared SDR ownership through the core `sdr_manager.py`
+
+When curses is unavailable or the terminal is limited, the plugin continuously prints measured peak frequency, FFT level, and median spectrum level. Use Ctrl+C to stop it. The web interface is owned by SpectrumSnek core and is not launched automatically by this plugin.
 
 An RTL-SDR compatible receiver is required for live operation. Hardware-backed testing must be performed on the target device.
 
-## Network access
-
-The web interface listens on all network interfaces so it can be opened from another device. It has no built-in authentication; run it only on a trusted network and restrict access to TCP port 5000 with your firewall.
+The standalone `--web` option remains available for debugging, but normal SpectrumSnek web UI integration belongs in core.
