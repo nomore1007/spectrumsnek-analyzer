@@ -23,7 +23,7 @@ def test_entrypoint_is_lazy():
     assert "scanner" not in plugin.__dict__
 
 
-def test_remote_or_limited_terminal_selects_web_ui():
+def test_remote_or_limited_terminal_uses_live_text_output():
     import ast
     import os
     import sys
@@ -33,29 +33,29 @@ def test_remote_or_limited_terminal_selects_web_ui():
     tree = ast.parse(source)
     helper_node = next(
         node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "should_use_web_interface"
+        if isinstance(node, ast.FunctionDef) and node.name == "should_use_text_mode"
     )
     namespace = {"os": os, "sys": sys}
     exec(compile(ast.Module(body=[helper_node], type_ignores=[]), "<analyzer-helper>", "exec"), namespace)
-    should_use_web = namespace["should_use_web_interface"]
+    should_use_text = namespace["should_use_text_mode"]
 
-    assert should_use_web(
+    assert should_use_text(
         Namespace(web=False, text=False),
         environ={"SSH_TTY": "/dev/pts/1", "TERM": "xterm"},
         stdin_isatty=True, stdout_isatty=True,
     )
-    assert should_use_web(
+    assert should_use_text(
         Namespace(web=False, text=False),
         environ={"TERM": "dumb"},
         stdin_isatty=True, stdout_isatty=True,
     )
-    assert not should_use_web(
-        Namespace(web=True, text=False),
-        environ={"SSH_TTY": "/dev/pts/1", "TERM": "dumb"},
+    assert should_use_text(
+        Namespace(web=False, text=True),
+        environ={"TERM": "xterm"},
         stdin_isatty=True, stdout_isatty=True,
     )
-    assert not should_use_web(
-        Namespace(web=False, text=True),
+    assert not should_use_text(
+        Namespace(web=True, text=False),
         environ={"SSH_TTY": "/dev/pts/1", "TERM": "dumb"},
         stdin_isatty=True, stdout_isatty=True,
     )
