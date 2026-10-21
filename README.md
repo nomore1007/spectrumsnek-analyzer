@@ -1,22 +1,24 @@
 # SpectrumSnek RTL-SDR Analyzer Plugin
 
-Standalone addon repository for the SpectrumSnek plugin manager.
+Standalone addon for the current SpectrumSnek plugin menu.
 
-## Install
+## Install and launch
 
-From the SpectrumSnek root directory:
+Install through **Utilities → Installed Plugins**, or from the SpectrumSnek root:
 
 ```bash
-./plugin_manager.sh install-url https://github.com/nomore1007/spectrumsnek-analyzer
+./plugin_manager.sh install analyzer
 ```
 
-The analyzer uses SpectrumSnek's core `sdr_manager.py` to coordinate exclusive RTL-SDR access. Launch it from Utilities → Installed Plugins.
+The plugin is installed as `plugins/analyzer`. The menu discovers its `__init__.py` plugin contract (`MODULE_INFO`, `get_module_info()`, and no-argument `run()`) and launches it from the Installed Plugins menu.
+
+The analyzer imports SpectrumSnek's core `sdr_manager.py` at runtime to coordinate exclusive RTL-SDR access with other features. Install it into the SpectrumSnek `plugins/` directory; running the source repository by itself is not a supported standalone mode.
 
 ## Features
 
 - Live spectrum display and tuning
 - AM/FM/SSB/CW demodulation support
 - CTCSS tone detection
-- Terminal interface and text fallback
+- Interactive terminal interface
 
-Hardware access and interactive UI require an RTL-SDR compatible receiver and must be tested on the target device.
+An RTL-SDR compatible receiver is required for live operation. Hardware-backed testing must be performed on the target device.
