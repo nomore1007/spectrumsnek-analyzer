@@ -19,6 +19,7 @@ The analyzer imports SpectrumSnek's core `sdr_manager.py` at runtime to coordina
 - Live spectrum display and tuning
 - AM/FM/SSB/CW demodulation support
 - CTCSS tone detection
-- Interactive terminal interface
+- Interactive terminal interface on a capable local terminal
+- Web interface automatically selected for SSH or `TERM=dumb` sessions
 
 An RTL-SDR compatible receiver is required for live operation. Hardware-backed testing must be performed on the target device.
