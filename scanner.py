@@ -1142,6 +1142,31 @@ def is_remote_session():
     ssh_vars = ['SSH_CLIENT', 'SSH_TTY', 'SSH_CONNECTION']
     return any(os.environ.get(var) for var in ssh_vars)
 
+def should_use_web_interface(args, environ=None, stdin_isatty=None, stdout_isatty=None):
+    """Return whether the interactive web UI is preferable to curses.
+
+    SSH and dumb/non-interactive terminals cannot reliably host the curses UI.
+    Explicit --web and --text flags always take precedence.
+    """
+    import os
+    import sys
+
+    if args.web or args.text:
+        return False
+
+    env = os.environ if environ is None else environ
+    if any(env.get(name) for name in ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")):
+        return True
+    if env.get("TERM", "").lower() in {"dumb", "unknown"}:
+        return True
+
+    if stdin_isatty is None:
+        stdin_isatty = sys.stdin.isatty()
+    if stdout_isatty is None:
+        stdout_isatty = sys.stdout.isatty()
+    return not stdin_isatty or not stdout_isatty
+
+
 def main(stdscr=None):
     """Main entry point for RTL scanner."""
     import argparse
@@ -1169,6 +1194,13 @@ def main(stdscr=None):
         if unknown:
             print(f"Warning: unrecognized arguments: {unknown}")
 
+    # Curses is not usable in SSH sessions with limited terminals (for example
+    # TERM=dumb). Start the full web UI rather than returning a text-only status
+    # screen. Explicit --text remains available for diagnostics.
+    if should_use_web_interface(args):
+        print("Remote or limited terminal detected; starting the spectrum analyzer web interface.")
+        args.web = True
+
     if args.web:
         from .web_scanner import WebControlInterface
 
@@ -1185,25 +1217,17 @@ def main(stdscr=None):
             scanner.close()
         return
 
-    # Auto-detect remote sessions when launched from menu
-    # Only treat as remote if we have SSH_TTY (actual remote session)
-    if 'SSH_TTY' in os.environ and not args.web:
-        print("Remote session detected. Using text mode for better compatibility.")
-        print("Use --web for web interface when running from command line.")
-        args.text = True
-
     if args.text:
         # Run in text mode
         try:
             print("RTL-SDR Spectrum Analyzer - Text Mode")
             print("=====================================")
             print("Text mode provides basic information.")
-            print("For full interactive features, run locally without SSH.")
+            print("For full interactive features, run without --text or use --web.")
             print("")
             print("Current status:")
-            print("- Remote session: Detected")
-            print("- Terminal type: Limited (dumb)")
-            print("- Interactive mode: Not available")
+            print("- Text mode: Enabled")
+            print("- Interactive controls: Not available in text mode")
             print("")
             print("To use the spectrum analyzer:")
             print("1. Run locally: python -m plugins.analyzer.scanner")
