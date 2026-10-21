@@ -16,5 +16,15 @@ def get_module_info():
     return MODULE_INFO
 
 def run():
+    import sys
     from .scanner import main
-    main()
+
+    # The core plugin launcher passes --run PLUGIN_ID to its own process.
+    # Do not let those arguments leak into this plugin's argument parser.
+    original_argv = sys.argv
+    try:
+        sys.argv = [original_argv[0]]
+        main()
+    finally:
+        sys.argv = original_argv
+
