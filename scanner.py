@@ -1135,24 +1135,13 @@ def emergency_cleanup():
     if global_scanner:
         global_scanner.close()
 
-def is_remote_session():
-    """Check if running in a remote session (SSH, etc.)"""
-    import os
-    # Check for SSH environment variables
-    ssh_vars = ['SSH_CLIENT', 'SSH_TTY', 'SSH_CONNECTION']
-    return any(os.environ.get(var) for var in ssh_vars)
-
-def should_use_web_interface(args, environ=None, stdin_isatty=None, stdout_isatty=None):
-    """Return whether the interactive web UI is preferable to curses.
-
-    SSH and dumb/non-interactive terminals cannot reliably host the curses UI.
-    Explicit --web and --text flags always take precedence.
-    """
+def should_use_text_mode(args, environ=None, stdin_isatty=None, stdout_isatty=None):
+    """Use readable live text output when curses is unavailable."""
     import os
     import sys
 
     if args.web or args.text:
-        return False
+        return args.text
 
     env = os.environ if environ is None else environ
     if any(env.get(name) for name in ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")):
@@ -1167,6 +1156,58 @@ def should_use_web_interface(args, environ=None, stdin_isatty=None, stdout_isatt
     return not stdin_isatty or not stdout_isatty
 
 
+def run_text_scanner(center_freq, sample_rate, gain):
+    """Continuously capture samples and print real spectrum measurements."""
+    sdr = None
+    manager = None
+    lease = None
+    fft_size = 4096
+    window = np.hanning(fft_size)
+
+    try:
+        manager = SDRManager()
+        lease = manager.acquire_device("analyzer")
+        sdr = RtlSdr()
+        sdr.sample_rate = sample_rate
+        sdr.center_freq = center_freq
+        sdr.gain = "auto" if str(gain).lower() == "auto" else float(gain)
+
+        print("RTL-SDR Spectrum Analyzer - Live Text Mode")
+        print("Press Ctrl+C to stop.")
+        print(f"Center: {center_freq / 1e6:.6f} MHz | Sample rate: {sample_rate / 1e6:.3f} MS/s")
+        print(f"Gain: {gain}")
+        print("-" * 72)
+
+        offsets = np.fft.fftshift(np.fft.fftfreq(fft_size, d=1.0 / sample_rate))
+        while True:
+            samples = sdr.read_samples(fft_size)
+            spectrum = 20 * np.log10(np.abs(np.fft.fftshift(np.fft.fft(samples * window))) + 1e-12)
+            peak_index = int(np.argmax(spectrum))
+            peak_freq = center_freq + offsets[peak_index]
+            peak_db = float(spectrum[peak_index])
+            floor_db = float(np.median(spectrum))
+            peak_bar = "#" * max(1, min(40, int(max(0.0, peak_db - floor_db))))
+            print(
+                f"{time.strftime('%H:%M:%S')} | Peak {peak_freq / 1e6:12.6f} MHz"
+                f" | FFT {peak_db:7.1f} dB | Median {floor_db:7.1f} dB | {peak_bar}",
+                flush=True,
+            )
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        print("\nSpectrum analyzer stopped.")
+    except Exception as exc:
+        print(f"\nSpectrum analyzer error: {exc}", file=sys.stderr)
+        raise
+    finally:
+        if sdr is not None:
+            try:
+                sdr.close()
+            except Exception:
+                pass
+        if lease is not None and manager is not None:
+            manager.release_device()
+
+
 def main(stdscr=None):
     """Main entry point for RTL scanner."""
     import argparse
@@ -1178,80 +1219,41 @@ def main(stdscr=None):
     parser.add_argument('--gain', type=str, default='auto',
                         help='SDR gain setting (auto or dB value)')
     parser.add_argument('--text', action='store_true',
-                        help='Run in text mode (console output)')
+                        help='Run live spectrum measurements in text mode')
     parser.add_argument('--web', action='store_true',
-                        help='Enable web interface')
+                        help='Use the standalone web interface (if available)')
     parser.add_argument('--samplerate', type=float, default=2.4,
                         help='Sample rate in MHz (default: 2.4)')
 
-    # Check if running with arguments (from command line) or without (from menu)
-    if len(sys.argv) == 1:
-        # No arguments passed (launched from menu)
-        args = parser.parse_args([])  # Parse with no args
-    else:
-        # Arguments passed (command line usage)
-        args, unknown = parser.parse_known_args()
-        if unknown:
-            print(f"Warning: unrecognized arguments: {unknown}")
-
-    # Curses is not usable in SSH sessions with limited terminals (for example
-    # TERM=dumb). Start the full web UI rather than returning a text-only status
-    # screen. Explicit --text remains available for diagnostics.
-    if should_use_web_interface(args):
-        print("Remote or limited terminal detected; starting the spectrum analyzer web interface.")
-        args.web = True
+    args, unknown = parser.parse_known_args()
+    if unknown:
+        print(f"Warning: unrecognized arguments: {unknown}")
 
     if args.web:
         from .web_scanner import WebRTLScanner
-
-        scanner = WebRTLScanner(
+        WebRTLScanner(
             sample_rate=args.samplerate * 1e6,
             center_freq=args.freq * 1e6,
             gain=args.gain,
-        )
-        scanner.run()
+        ).run()
         return
 
-    if args.text:
-        # Run in text mode
-        try:
-            print("RTL-SDR Spectrum Analyzer - Text Mode")
-            print("=====================================")
-            print("Text mode provides basic information.")
-            print("For full interactive features, run without --text or use --web.")
-            print("")
-            print("Current status:")
-            print("- Text mode: Enabled")
-            print("- Interactive controls: Not available in text mode")
-            print("")
-            print("To use the spectrum analyzer:")
-            print("1. Run locally: python -m plugins.analyzer.scanner")
-            print("2. Use web interface: python -m plugins.analyzer.scanner --web")
-            print("3. Command line: python -m plugins.analyzer.scanner --freq 100")
-            print("")
-            print("Press Enter to return to menu...")
-            if sys.stdin.isatty():
-                input()
-        except KeyboardInterrupt:
-            print("\nRTL scanner stopped by user")
-        except Exception as e:
-            print(f"Text mode failed: {e}")
-    elif stdscr is not None:
-        # Already in curses mode, run directly
-        run(stdscr)
-    else:
-        # Not in curses mode, use wrapper
-        try:
-            curses.wrapper(run)
-        except curses.error as exc:
-            print(f"Terminal interface unavailable ({exc}); starting the web interface.")
-            from .web_scanner import WebRTLScanner
+    if should_use_text_mode(args):
+        if not args.text:
+            print("Remote or limited terminal detected; using live text spectrum output.")
+        run_text_scanner(args.freq * 1e6, args.samplerate * 1e6, args.gain)
+        return
 
-            WebRTLScanner(
-                sample_rate=args.samplerate * 1e6,
-                center_freq=args.freq * 1e6,
-                gain=args.gain,
-            ).run()
+    if stdscr is not None:
+        run(stdscr)
+        return
+
+    try:
+        curses.wrapper(run)
+    except curses.error as exc:
+        print(f"Terminal interface unavailable ({exc}); switching to live text output.")
+        run_text_scanner(args.freq * 1e6, args.samplerate * 1e6, args.gain)
+
 
 if __name__ == "__main__":
     main()
