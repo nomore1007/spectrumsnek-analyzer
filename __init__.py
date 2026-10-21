@@ -8,7 +8,7 @@ MODULE_INFO = {
     "author": "SpectrumSnek",
     "capabilities": [
         "Real-time spectrum analysis", "AM/FM/SSB/CW demodulation",
-        "CTCSS tone detection", "Curses and text interfaces",
+        "CTCSS tone detection", "Curses and web interfaces",
     ],
 }
 
