@@ -1202,19 +1202,14 @@ def main(stdscr=None):
         args.web = True
 
     if args.web:
-        from .web_scanner import WebControlInterface
+        from .web_scanner import WebRTLScanner
 
-        scanner = InteractiveRTLScanner(
-            None,
+        scanner = WebRTLScanner(
             sample_rate=args.samplerate * 1e6,
             center_freq=args.freq * 1e6,
             gain=args.gain,
         )
-        try:
-            scanner.initialize_device()
-            WebControlInterface(scanner).run()
-        finally:
-            scanner.close()
+        scanner.run()
         return
 
     if args.text:
