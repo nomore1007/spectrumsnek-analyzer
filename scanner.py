@@ -197,7 +197,7 @@ class InteractiveRTLScanner:
         with self.sdr_lock:
             try:
                 self.sdr_manager = SDRManager()
-                self.sdr_lease = self.sdr_manager.acquire_device("rtl_scanner")
+                self.sdr_lease = self.sdr_manager.acquire_device("analyzer")
                 self.sdr = RtlSdr()  # type: ignore
                 if self.sdr is None:
                     raise RuntimeError("Failed to create RTL-SDR instance")
