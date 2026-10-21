@@ -4,12 +4,19 @@ RTL-SDR Scanner Web Interface
 Web-based interface for the RTL-SDR scanner with real-time spectrum display.
 """
 
+import os
+import sys
 import threading
 import time
 import json
 from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit
 import numpy as np
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+from sdr_manager import SDRManager
 
 # Web-based RTL-SDR scanner
 
@@ -318,9 +325,11 @@ class WebRTLScanner:
         self.center_freq = center_freq
         self.gain = gain
 
-        # Initialize RTL-SDR components directly (not using InteractiveRTLScanner)
+        # Coordinate access with every other SpectrumSnek feature using the RTL-SDR.
         self.sdr = None
         self.sdr_lock = threading.Lock()
+        self.sdr_manager = SDRManager()
+        self.sdr_lease = None
         self.is_running = True
 
         # Spectrum analysis components
@@ -394,26 +403,45 @@ class WebRTLScanner:
                     pass
 
     def initialize_device(self):
-        """Initialize the RTL-SDR device."""
+        """Initialize the RTL-SDR device under SpectrumSnek's shared lock."""
         with self.sdr_lock:
+            if self.sdr is not None:
+                return
             try:
+                self.sdr_lease = self.sdr_manager.acquire_device("analyzer")
                 from rtlsdr import RtlSdr
                 self.sdr = RtlSdr()
                 if self.sdr is None:
                     raise RuntimeError("Failed to create RTL-SDR instance")
-
                 self.sdr.sample_rate = self.sample_rate
                 self.sdr.center_freq = self.center_freq
-                if self.gain == 'auto':
-                    self.sdr.gain = 'auto'
-                else:
-                    self.sdr.gain = self.gain
-
+                self.sdr.gain = 'auto' if self.gain == 'auto' else self.gain
                 print("RTL-SDR initialized for web interface")
-
-            except Exception as e:
-                print(f"Failed to initialize RTL-SDR: {e}")
+            except Exception as exc:
+                if self.sdr is not None:
+                    try:
+                        self.sdr.close()
+                    except Exception:
+                        pass
+                    self.sdr = None
+                if self.sdr_lease is not None:
+                    self.sdr_manager.release_device()
+                    self.sdr_lease = None
+                print(f"Failed to initialize RTL-SDR: {exc}")
                 raise
+
+    def close_device(self):
+        """Close the SDR and release shared ownership."""
+        with self.sdr_lock:
+            if self.sdr is not None:
+                try:
+                    self.sdr.close()
+                except Exception:
+                    pass
+                self.sdr = None
+            if self.sdr_lease is not None:
+                self.sdr_manager.release_device()
+                self.sdr_lease = None
 
     def setup_routes(self):
         """Set up Flask routes."""
@@ -451,20 +479,20 @@ class WebRTLScanner:
         @self.socketio.on('start_scan')
         def handle_start_scan():
             if not self.running:
+                try:
+                    self.initialize_device()
+                except Exception as exc:
+                    self.running = False
+                    emit('status', {'message': f'Could not start scanner: {exc}'})
+                    return
                 self.running = True
-                self.initialize_device()
                 threading.Thread(target=self._spectrum_broadcast_loop, daemon=True).start()
                 emit('status', {'message': 'Scanner started'})
 
         @self.socketio.on('stop_scan')
         def handle_stop_scan():
             self.running = False
-            with self.sdr_lock:
-                if self.sdr:
-                    try:
-                        self.sdr.close()
-                    except:
-                        pass
+            self.close_device()
             emit('status', {'message': 'Scanner stopped'})
 
         @self.socketio.on('set_frequency')
@@ -562,30 +590,28 @@ class WebRTLScanner:
                 self.power_spectrum = np.zeros(self.fft_size) - 50
 
     def _spectrum_broadcast_loop(self):
-        """Broadcast spectrum data to all connected clients."""
-        while self.is_running:
+        """Capture and broadcast live spectrum data while scanning is enabled."""
+        while self.is_running and self.running:
             try:
-                if hasattr(self, 'power_spectrum') and len(self.clients) > 0:
+                if len(self.clients) > 0:
+                    # Capture first; requiring power_spectrum before capture
+                    # prevents the initial spectrum from ever being produced.
                     self.capture_samples()
-
-                    # Convert spectrum data to list for JSON serialization
-                    spectrum_data = {
-                        'frequencies': np.linspace(
-                            self.center_freq - self.sample_rate/2,
-                            self.center_freq + self.sample_rate/2,
-                            len(self.power_spectrum)
-                        ).tolist(),
-                        'powers': self.power_spectrum.tolist(),
-                        'center_freq': self.center_freq / 1e6,
-                        'sample_rate': self.sample_rate / 1e6
-                    }
-
-                    self.socketio.emit('spectrum_data', spectrum_data)
-
-                time.sleep(0.1)  # 10 FPS
-
-            except Exception as e:
-                print(f"Spectrum broadcast error: {e}")
+                    if hasattr(self, 'power_spectrum'):
+                        spectrum_data = {
+                            'frequencies': np.linspace(
+                                self.center_freq - self.sample_rate/2,
+                                self.center_freq + self.sample_rate/2,
+                                len(self.power_spectrum)
+                            ).tolist(),
+                            'powers': self.power_spectrum.tolist(),
+                            'center_freq': self.center_freq / 1e6,
+                            'sample_rate': self.sample_rate / 1e6
+                        }
+                        self.socketio.emit('spectrum_data', spectrum_data)
+                time.sleep(0.1)
+            except Exception as exc:
+                print(f"Spectrum broadcast error: {exc}")
                 time.sleep(0.5)
 
     def get_html_template(self):
@@ -911,16 +937,17 @@ class WebRTLScanner:
 
     def run(self, host='0.0.0.0', port=5000):
         """Run the web server."""
-        print(f"Starting RTL-SDR Scanner Web Interface on http://{host}:{port}")
+        if host == "0.0.0.0":
+            print(f"Starting RTL-SDR Spectrum Analyzer on port {port}.")
+            print(f"Open http://<SpectrumSnek-IP>:{port} in a browser on the same network.")
+        else:
+            print(f"Starting RTL-SDR Spectrum Analyzer at http://{host}:{port}")
         print("Press Ctrl+C to stop")
         try:
             self.socketio.run(self.app, host=host, port=port, debug=False)
         except KeyboardInterrupt:
-            print("\nWeb server stopped")
+            print("\\nWeb server stopped")
         finally:
-            with self.sdr_lock:
-                if self.sdr:
-                    try:
-                        self.sdr.close()
-                    except:
-                        pass
+            self.running = False
+            self.is_running = False
+            self.close_device()
