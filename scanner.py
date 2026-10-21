@@ -64,7 +64,7 @@ class InteractiveRTLScanner:
         self.freqs = np.fft.fftshift(self.freqs) + self.center_freq
 
         # Display settings
-        self.height, self.width = stdscr.getmaxyx()
+        self.height, self.width = stdscr.getmaxyx() if stdscr is not None else (24, 80)
         self.spectrum_height = 20  # Leave space for controls
 
         # Spectrum display settings
