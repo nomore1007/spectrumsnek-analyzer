@@ -1169,6 +1169,22 @@ def main(stdscr=None):
         if unknown:
             print(f"Warning: unrecognized arguments: {unknown}")
 
+    if args.web:
+        from .web_scanner import WebControlInterface
+
+        scanner = InteractiveRTLScanner(
+            None,
+            sample_rate=args.samplerate * 1e6,
+            center_freq=args.freq * 1e6,
+            gain=args.gain,
+        )
+        try:
+            scanner.initialize_device()
+            WebControlInterface(scanner).run()
+        finally:
+            scanner.close()
+        return
+
     # Auto-detect remote sessions when launched from menu
     # Only treat as remote if we have SSH_TTY (actual remote session)
     if 'SSH_TTY' in os.environ and not args.web:
@@ -1190,9 +1206,9 @@ def main(stdscr=None):
             print("- Interactive mode: Not available")
             print("")
             print("To use the spectrum analyzer:")
-            print("1. Run locally: Utilities → Installed Plugins (RTL-SDR Spectrum Analyzer)")
-            print("2. Use web interface: Utilities → Installed Plugins (RTL-SDR Spectrum Analyzer) --web")
-            print("3. Command line: Utilities → Installed Plugins (RTL-SDR Spectrum Analyzer) --freq 100")
+            print("1. Run locally: python -m plugins.analyzer.scanner")
+            print("2. Use web interface: python -m plugins.analyzer.scanner --web")
+            print("3. Command line: python -m plugins.analyzer.scanner --freq 100")
             print("")
             print("Press Enter to return to menu...")
             if sys.stdin.isatty():
@@ -1222,9 +1238,9 @@ def main(stdscr=None):
             print("- Interactive mode: Not available")
             print("")
             print("To use the spectrum analyzer:")
-            print("1. Run locally: Utilities → Installed Plugins (RTL-SDR Spectrum Analyzer)")
-            print("2. Use web interface: Utilities → Installed Plugins (RTL-SDR Spectrum Analyzer) --web")
-            print("3. Command line: Utilities → Installed Plugins (RTL-SDR Spectrum Analyzer) --freq 100")
+            print("1. Run locally: python -m plugins.analyzer.scanner")
+            print("2. Use web interface: python -m plugins.analyzer.scanner --web")
+            print("3. Command line: python -m plugins.analyzer.scanner --freq 100")
             print("")
             if sys.stdin.isatty():
                 input("Press Enter to continue...")
